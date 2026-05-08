@@ -7,16 +7,16 @@ import {
   ArrowLeft, 
   Loader2, 
   Newspaper, 
-  Type, 
-  Layout, 
+  Type,
   Star, 
   Info,
   Calendar,
   Eye,
-  AlignLeft
+  AlignLeft,
+  Image as ImageIcon
 } from 'lucide-react'
 import Toast from '@/components/Toast'
-import FileUploader from '@/components/FileUploader'
+import MultiImageUploader from '@/components/MultiImageUploader'
 
 export default function NoticiaFormPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -32,6 +32,7 @@ export default function NoticiaFormPage({ params }: { params: Promise<{ id: stri
     resumen: '',
     contenido: '',
     imagen_portada_url: '',
+    imagenes: [] as string[],
     destacada: false,
     vistas: 0
   })
@@ -49,7 +50,12 @@ export default function NoticiaFormPage({ params }: { params: Promise<{ id: stri
         .single()
 
       if (error) throw error
-      if (data) setFormData(data)
+      if (data) {
+        setFormData({
+          ...data,
+          imagenes: data.imagenes || []
+        })
+      }
     } catch (err: any) {
       setToast({ message: 'Error al cargar noticia: ' + err.message, type: 'error' })
     } finally {
@@ -62,9 +68,16 @@ export default function NoticiaFormPage({ params }: { params: Promise<{ id: stri
     setLoading(true)
 
     try {
+      // Usar la primera imagen de la galería como imagen de portada
+      const finalData = {
+        ...formData,
+        imagenes: formData.imagenes || [],
+        imagen_portada_url: (formData.imagenes && formData.imagenes.length > 0) ? formData.imagenes[0] : ''
+      }
+
       const { error } = isEditing
-        ? await supabase.from('noticias').update(formData).eq('id', id)
-        : await supabase.from('noticias').insert([formData])
+        ? await supabase.from('noticias').update(finalData).eq('id', id)
+        : await supabase.from('noticias').insert([finalData])
 
       if (error) throw error
 
@@ -167,19 +180,23 @@ export default function NoticiaFormPage({ params }: { params: Promise<{ id: stri
 
         {/* Columna Lateral */}
         <div className="lg:col-span-4 space-y-8">
-          {/* Multimedia */}
+          {/* Multimedia Unificada */}
           <div className="bg-white p-7 rounded-[2.5rem] shadow-xl shadow-gray-200/50 border border-gray-50 relative overflow-hidden group">
             <h3 className="text-sm font-black text-[#1a3a5c] mb-6 uppercase tracking-widest flex items-center gap-2">
-              <Layout size={18} className="text-[#c8902a]" />
-              Imagen Principal
+              <ImageIcon size={18} className="text-[#c8902a]" />
+              Galería Multimedia
             </h3>
             
-            <FileUploader 
-              type="image" 
-              currentUrl={formData.imagen_portada_url}
-              onUploadSuccess={(url) => setFormData({ ...formData, imagen_portada_url: url })}
+            <MultiImageUploader 
+              urls={formData.imagenes || []}
+              onChange={(urls) => setFormData({ ...formData, imagenes: urls })}
             />
-            <p className="text-[10px] text-gray-400 mt-4 text-center">Recomendado: 1200x800px</p>
+            
+            <div className="mt-6 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight leading-relaxed">
+                  Tip: La primera imagen de la lista se utilizará automáticamente como la <span className="text-[#c8902a]">portada principal</span> de la noticia.
+               </p>
+            </div>
           </div>
 
           {/* Opciones Especiales */}

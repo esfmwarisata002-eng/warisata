@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Upload, X, FileText, Image as ImageIcon, Loader2, CheckCircle2 } from 'lucide-react'
 import { uploadImage, uploadDocument, generateFileName } from '@/utils/storage'
 
@@ -16,6 +16,11 @@ export default function FileUploader({ type, onUploadSuccess, currentUrl, label 
   const [preview, setPreview] = useState<string | null>(currentUrl || null)
   const [fileName, setFileName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Sincronizar previsualización si la URL cambia (ej. al cargar datos de Supabase)
+  useEffect(() => {
+    if (currentUrl) setPreview(currentUrl)
+  }, [currentUrl])
 
   const handleFile = async (file: File) => {
     setIsUploading(true)

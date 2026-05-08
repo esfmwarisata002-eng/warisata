@@ -1,286 +1,231 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Trash2, Shield, User, Check, X } from 'lucide-react'
+import { 
+  Plus, 
+  Trash2, 
+  ShieldCheck, 
+  User as UserIcon, 
+  X, 
+  Edit3, 
+  Loader2, 
+  CheckCircle2, 
+  Mail,
+  Key,
+  ChevronRight,
+  ShieldAlert,
+  Users
+} from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import Toast from '@/components/Toast'
 
-interface Rol {
-  id: string
-  nombre: string
-}
+interface Rol { id: string; nombre: string; }
+interface Usuario { id: string; nombre_completo: string; activo: boolean; created_at: string; rol_id: string; email?: string; roles?: Rol; }
 
-interface Usuario {
-  id: string
-  nombre_completo: string
-  activo: boolean
-  created_at: string
-  rol_id: string
-  roles?: Rol
-}
-
-export default function UsuariosPage() {
+export default function UsuariosPremiumPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [roles, setRoles] = useState<Rol[]>([])
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null)
 
-  // Formulario para nuevo usuario
-  const [email, setEmail] = useState('')
-  const [nombre, setNombre] = useState('')
-  const [password, setPassword] = useState('')
-  const [rolId, setRolId] = useState('')
+  const [formData, setFormData] = useState({ email: '', nombre: '', password: '', rol_id: '' })
 
-  useEffect(() => {
-    fetchData()
-  }, [])
+  useEffect(() => { fetchData() }, [])
 
   async function fetchData() {
     setLoading(true)
     try {
-      // Obtener usuarios con sus roles (usando join de Supabase)
-      const { data: usersData, error: usersError } = await supabase
-        .from('usuarios')
-        .select('*, roles(id, nombre)')
-        .order('created_at', { ascending: false })
-
-      const { data: rolesData, error: rolesError } = await supabase
-        .from('roles')
-        .select('*')
-        .order('nombre')
-
-      if (usersError) throw usersError
-      if (rolesError) throw rolesError
-
+      const { data: usersData, error: usersError } = await supabase.from('usuarios').select('*, roles(id, nombre)').order('created_at', { ascending: false })
+      const { data: rolesData, error: rolesError } = await supabase.from('roles').select('*').order('nombre')
+      if (usersError || rolesError) throw usersError || rolesError
       setUsuarios(usersData || [])
       setRoles(rolesData || [])
-      if (rolesData && rolesData.length > 0) setRolId(rolesData[0].id)
+      if (rolesData && rolesData.length > 0) setFormData(prev => ({ ...prev, rol_id: rolesData[0].id }))
     } catch (err: any) {
-      setToast({ message: 'Error al cargar datos: ' + err.message, type: 'error' })
-    } finally {
-      setLoading(false)
-    }
+      setToast({ message: 'Error de sincronización: ' + err.message, type: 'error' })
+    } finally { setLoading(false) }
   }
 
-  const crearUsuario = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
+    setSaving(true)
+    try {
+      if (editingId) {
+        // MODO EDICIÓN
+        const { error } = await supabase.from('usuarios').update({ nombre_completo: formData.nombre, rol_id: formData.rol_id }).eq('id', editingId)
+        if (error) throw error
+        setToast({ message: 'Perfil actualizado ✅', type: 'success' })
+      } else {
+        // MODO CREACIÓN
+        const { data: authData, error: authError } = await supabase.auth.signUp({ email: formData.email, password: formData.password, options: { data: { full_name: formData.nombre } } })
+        if (authError) throw authError
+        if (authData.user) {
+          const { error: dbError } = await supabase.from('usuarios').upsert({ id: authData.user.id, nombre_completo: formData.nombre, rol_id: formData.rol_id, activo: true })
+          if (dbError) throw dbError
+        }
+        setToast({ message: 'Usuario creado e inyectado ✅', type: 'success' })
+      }
+      setShowModal(false); fetchData()
+    } catch (err: any) {
+      setToast({ message: 'Error: ' + err.message, type: 'error' })
+    } finally { setSaving(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('¿Dar de baja definitiva a este administrador?')) return
     setLoading(true)
     try {
-      // 1. Crear en Auth de Supabase
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: nombre }
-        }
-      })
-
-      if (authError) throw authError
-
-      // 2. Asociar el rol en la tabla pública usuarios
-      // Nota: El trigger handle_new_user ya crea el registro inicial, 
-      // actualizamos el nombre y el rol.
-      if (authData.user) {
-        const { error: dbError } = await supabase
-          .from('usuarios')
-          .update({
-            nombre_completo: nombre,
-            rol_id: rolId
-          })
-          .eq('id', authData.user.id)
-
-        if (dbError) throw dbError
-      }
-
-      setToast({ message: 'Usuario creado y asociado correctamente', type: 'success' })
-      setShowModal(false)
+      const { error } = await supabase.from('usuarios').delete().eq('id', id)
+      if (error) throw error
+      setToast({ message: 'Acceso revocado 🧹', type: 'success' })
       fetchData()
-      setEmail('')
-      setPassword('')
-      setNombre('')
-    } catch (err: any) {
-      setToast({ message: 'Error al crear usuario: ' + err.message, type: 'error' })
-    } finally {
-      setLoading(false)
-    }
+    } catch (err) {
+      setToast({ message: 'Error al eliminar', type: 'error' })
+    } finally { setLoading(false) }
   }
 
   const toggleEstado = async (id: string, actual: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('usuarios')
-        .update({ activo: !actual })
-        .eq('id', id)
+    const { error } = await supabase.from('usuarios').update({ activo: !actual }).eq('id', id)
+    if (!error) fetchData()
+  }
 
-      if (error) throw error
-      fetchData()
-    } catch (err: any) {
-      setToast({ message: 'Error: ' + err.message, type: 'error' })
+  const openForm = (u?: Usuario) => {
+    if (u) {
+      setEditingId(u.id)
+      setFormData({ email: '', nombre: u.nombre_completo, password: '', rol_id: u.rol_id })
+    } else {
+      setEditingId(null)
+      setFormData({ email: '', nombre: '', password: '', rol_id: roles[0]?.id || '' })
     }
+    setShowModal(true)
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-[#1a3a5c]">Gestión de Usuarios</h1>
-          <p className="text-gray-600">Controla quién accede al panel administrativo</p>
+    <div className="p-4 lg:p-10 bg-[#f8f9fa] min-h-screen text-[#1a3a5c]">
+      
+      {/* HEADER COMPACTO */}
+      <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center mb-10 border-b border-gray-200 pb-6 gap-4">
+        <div className="flex items-center gap-4">
+           <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-xl"><Users size={26} /></div>
+           <div>
+              <h1 className="font-black uppercase text-xl leading-none italic">Gestión <span className="text-[#c8902a]">Administrativa</span></h1>
+              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-1">Control de Personal Técnico</p>
+           </div>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-[#1a3a5c] text-white px-4 py-2 rounded-lg hover:bg-[#264e7a] transition"
-        >
-          <Plus size={20} /> Crear Usuario
+        <button onClick={() => openForm()} className="bg-slate-900 text-white px-6 py-3.5 rounded-xl font-black uppercase text-[10px] shadow-xl hover:bg-black transition-all flex items-center gap-2">
+           <Plus size={18} /> Crear Usuario
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b border-gray-100">
-            <tr>
-              <th className="px-6 py-4 font-semibold text-sm text-gray-600">Nombre</th>
-              <th className="px-6 py-4 font-semibold text-sm text-gray-600">Rol</th>
-              <th className="px-6 py-4 font-semibold text-sm text-gray-600">Estado</th>
-              <th className="px-6 py-4 font-semibold text-sm text-gray-600">Registrado el</th>
-              <th className="px-6 py-4 font-semibold text-sm text-gray-600">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {usuarios.map((usu) => (
-              <tr key={usu.id} className="hover:bg-gray-50 transition">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                      <User size={16} />
-                    </div>
-                    <span className="font-medium text-gray-800">{usu.nombre_completo}</span>
+      <div className="max-w-6xl mx-auto bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+        <div className="p-5 border-b border-slate-50 bg-slate-50/50 font-black text-[9px] text-gray-400 uppercase tracking-[0.2em] grid grid-cols-12 gap-4">
+           <div className="col-span-4 pl-4">Identidad del Usuario</div>
+           <div className="col-span-3 text-center">Rango Asignado</div>
+           <div className="col-span-2 text-center">Estado</div>
+           <div className="col-span-3 text-right pr-4">Acciones</div>
+        </div>
+        
+        <div className="divide-y divide-slate-50">
+           {loading ? (
+             <div className="p-20 text-center opacity-10 animate-pulse"><Loader2 size={40} className="mx-auto animate-spin" /></div>
+           ) : (
+             usuarios.map(u => (
+               <div key={u.id} className="p-5 grid grid-cols-12 gap-4 items-center hover:bg-blue-50/50 transition-all group">
+                  <div className="col-span-4 flex items-center gap-4 pl-4">
+                     <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 shadow-inner group-hover:bg-[#1a3a5c] group-hover:text-white transition-all">
+                        <UserIcon size={18} />
+                     </div>
+                     <div>
+                        <p className="text-[11px] font-black uppercase text-[#1a3a5c] tracking-tight">{u.nombre_completo}</p>
+                        <p className="text-[8px] font-bold text-gray-300 uppercase tracking-widest mt-1">ID: {u.id.substring(0,8)}...</p>
+                     </div>
                   </div>
-                </td>
-                <td className="px-6 py-4 text-sm">
-                  <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 flex items-center gap-1 w-fit border border-indigo-100">
-                    <Shield size={14} />
-                    {usu.roles?.nombre || 'Sin Rol'}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <button 
-                    onClick={() => toggleEstado(usu.id, usu.activo)}
-                    className={`text-xs px-2 py-1 rounded ${usu.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
-                  >
-                    {usu.activo ? 'Activo' : 'Inactivo'}
-                  </button>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  {format(new Date(usu.created_at), "dd 'de' MMMM, yyyy", { locale: es })}
-                </td>
-                <td className="px-6 py-4">
-                  <button className="text-red-600 hover:bg-red-50 p-2 rounded-lg transition">
-                    <Trash2 size={18} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {usuarios.length === 0 && !loading && (
-              <tr>
-                <td colSpan={5} className="text-center py-12 text-gray-500">No hay usuarios registrados</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  <div className="col-span-3 flex justify-center">
+                     <span className="px-4 py-1.5 rounded-full bg-slate-100 text-[8px] font-black uppercase text-slate-500 border border-slate-200 flex items-center gap-2">
+                        <ShieldCheck size={12} className="text-[#c8902a]" /> {u.roles?.nombre || 'SIN ROL'}
+                     </span>
+                  </div>
+                  <div className="col-span-2 flex justify-center">
+                     <button onClick={() => toggleEstado(u.id, u.activo)} className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase transition-all shadow-sm ${u.activo ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
+                        {u.activo ? 'ACCESO ACTIVO' : 'RESTRINGIDO'}
+                     </button>
+                  </div>
+                  <div className="col-span-3 flex justify-end gap-3 pr-4">
+                     <button onClick={() => openForm(u)} className="p-3 bg-white text-blue-600 rounded-xl shadow-sm border border-slate-50 hover:bg-blue-600 hover:text-white transition-all"><Edit3 size={16} /></button>
+                     <button onClick={() => handleDelete(u.id)} className="p-3 bg-white text-red-500 rounded-xl shadow-sm border border-slate-50 hover:bg-red-600 hover:text-white transition-all"><Trash2 size={16} /></button>
+                  </div>
+               </div>
+             ))
+           )}
+           {usuarios.length === 0 && !loading && (
+             <div className="p-20 text-center opacity-20 italic font-black uppercase tracking-[0.3em] text-[10px]">No hay personal autorizado</div>
+           )}
+        </div>
       </div>
 
-      {/* Modal para Crear Usuario */}
+      {/* MODAL CONFIGURADOR DE USUARIOS */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-[#1a3a5c]">Nuevo Usuario</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={24} />
-              </button>
-            </div>
-
-            <form onSubmit={crearUsuario} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label>
-                <input
-                  type="text"
-                  required
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-[#1a3a5c]/20 focus:border-[#1a3a5c]"
-                  placeholder="Ej. Juan Perez"
-                />
+        <div className="fixed inset-0 bg-[#0a1b2e]/90 backdrop-blur-xl flex items-center justify-center p-4 z-[120] animate-in zoom-in-95 duration-200">
+           <div className="bg-white rounded-[3.5rem] w-full max-w-sm p-10 lg:p-14 shadow-2xl relative border-b-[15px] border-[#1a3a5c]">
+              <button onClick={() => setShowModal(false)} className="absolute right-10 top-10 text-gray-300 hover:text-black z-50"><X size={32} /></button>
+              
+              <div className="mb-10 text-center">
+                 <p className="text-[9px] font-black uppercase tracking-[0.4em] text-[#c8902a] mb-2">{editingId ? 'ACTUALIZAR PERFIL' : 'NUEVO ACCESO ADM'}</p>
+                 <h2 className="text-2xl font-black uppercase text-[#1a3a5c] tracking-tighter leading-none">Gestión de Cuenta</h2>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-[#1a3a5c]/20 focus:border-[#1a3a5c]"
-                  placeholder="admin@warisata.edu.bo"
-                />
-              </div>
+              <form onSubmit={handleSave} className="space-y-6">
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest px-4 block">Nombre del Funcionario</label>
+                    <div className="relative">
+                       <UserIcon className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                       <input required value={formData.nombre} onChange={e => setFormData({ ...formData, nombre: e.target.value })} className="w-full pl-14 pr-6 py-5 bg-gray-50 rounded-2xl text-[11px] font-black uppercase border-none outline-none focus:ring-4 focus:ring-slate-100" />
+                    </div>
+                 </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña Temporal</label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-[#1a3a5c]/20 focus:border-[#1a3a5c]"
-                  placeholder="******"
-                />
-              </div>
+                 {!editingId && (
+                    <>
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest px-4 block">Correo Electrónico</label>
+                          <div className="relative">
+                             <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                             <input required type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full pl-14 pr-6 py-5 bg-gray-50 rounded-2xl text-[11px] font-bold border-none outline-none" />
+                          </div>
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest px-4 block">Password Temporal</label>
+                          <div className="relative">
+                             <Key className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                             <input required type="password" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full pl-14 pr-6 py-5 bg-gray-50 rounded-2xl text-[11px] font-bold border-none outline-none" />
+                          </div>
+                       </div>
+                    </>
+                 )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Rol del Sistema</label>
-                <select
-                  value={rolId}
-                  onChange={(e) => setRolId(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-[#1a3a5c]/20 focus:border-[#1a3a5c]"
-                >
-                  {roles.map(rol => (
-                    <option key={rol.id} value={rol.id}>{rol.nombre}</option>
-                  ))}
-                </select>
-              </div>
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest px-4 block">Rango Autorizado</label>
+                    <div className="relative">
+                       <ShieldAlert className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                       <select required value={formData.rol_id} onChange={e => setFormData({ ...formData, rol_id: e.target.value })} className="w-full pl-14 pr-6 py-5 bg-gray-50 rounded-2xl text-[11px] font-black uppercase border-none outline-none focus:ring-4 focus:ring-slate-100 cursor-pointer appearance-none">
+                          {roles.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                       </select>
+                    </div>
+                 </div>
 
-              <div className="flex gap-3 mt-8">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 px-4 py-2 bg-[#1a3a5c] text-white rounded-lg hover:bg-[#264e7a] transition disabled:opacity-50"
-                >
-                  {loading ? 'Creando...' : 'Crear Usuario'}
-                </button>
-              </div>
-            </form>
-          </div>
+                 <button type="submit" disabled={saving} className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black uppercase text-[10px] shadow-2xl hover:bg-black transition-all flex items-center justify-center gap-3 active:scale-95">
+                    {saving ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={24} />}
+                    {saving ? "Procesando..." : editingId ? "Actualizar Perfil" : "Emitir Nuevo Acceso"}
+                 </button>
+              </form>
+           </div>
         </div>
       )}
 
-      {toast && (
-        <Toast 
-          message={toast.message} 
-          type={toast.type} 
-          onClose={() => setToast(null)} 
-        />
-      )}
+      {toast && <Toast message={toast.message} type={toast.type as any} onClose={() => setToast(null)} />}
     </div>
   )
 }

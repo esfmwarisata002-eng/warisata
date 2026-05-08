@@ -1,5 +1,6 @@
 'use client'
 import { useEffect } from 'react'
+import { CheckCircle2, XCircle, Info, X, Zap } from 'lucide-react'
 
 interface ToastProps {
   message: string
@@ -9,29 +10,56 @@ interface ToastProps {
 
 export default function Toast({ message, type, onClose }: ToastProps) {
   useEffect(() => {
-    const t = setTimeout(onClose, 3500)
+    const t = setTimeout(onClose, 5000)
     return () => clearTimeout(t)
   }, [onClose])
 
   const configs = {
-    success: { bg: '#d1fae5', color: '#065f46', icon: '✅' },
-    error:   { bg: '#fee2e2', color: '#991b1b', icon: '❌' },
-    info:    { bg: '#dbeafe', color: '#1e40af', icon: 'ℹ️' },
+    success: { 
+      icon: CheckCircle2, 
+      color: 'text-emerald-500', 
+      bg: 'bg-emerald-50', 
+      border: 'border-emerald-100',
+      gradient: 'from-emerald-500 to-teal-400' 
+    },
+    error: { 
+      icon: XCircle, 
+      color: 'text-rose-500', 
+      bg: 'bg-rose-50', 
+      border: 'border-rose-100',
+      gradient: 'from-rose-600 to-pink-500' 
+    },
+    info: { 
+      icon: Info, 
+      color: 'text-sky-500', 
+      bg: 'bg-sky-50', 
+      border: 'border-sky-100',
+      gradient: 'from-sky-600 to-indigo-500' 
+    },
   }
+  
   const cfg = configs[type]
+  const Icon = cfg.icon
 
   return (
-    <div style={{
-      position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 9999,
-      background: cfg.bg, color: cfg.color,
-      padding: '.85rem 1.25rem', borderRadius: '10px',
-      boxShadow: '0 10px 25px rgba(0,0,0,.15)',
-      display: 'flex', alignItems: 'center', gap: '.75rem',
-      maxWidth: '360px', minWidth: '250px',
-    }}>
-      <span>{cfg.icon}</span>
-      <span style={{ fontSize: '.9rem', fontWeight: '500', flex: 1 }}>{message}</span>
-      <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: cfg.color, fontSize: '1.2rem', padding: 0, lineHeight: 1 }}>×</button>
+    <div className={`fixed bottom-10 right-10 z-[10000] p-1 rounded-[2.5rem] shadow-3xl animate-in slide-in-from-right-10 duration-500`}>
+      <div className={`absolute inset-0 bg-gradient-to-r ${cfg.gradient} rounded-[2.5rem] blur-xl opacity-20`} />
+      <div className={`relative flex items-center gap-6 px-8 py-6 ${cfg.bg} ${cfg.border} border-2 rounded-[2.5rem] backdrop-blur-3xl min-w-[320px] max-w-md`}>
+        <div className={`w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-lg ${cfg.color}`}>
+           <Icon size={28} />
+        </div>
+        
+        <div className="flex-1">
+           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 flex items-center gap-2">
+              <Zap size={10} className="fill-current" /> Sistema de Transmisión
+           </p>
+           <p className="text-sm font-black text-slate-900 uppercase italic tracking-tight">{message}</p>
+        </div>
+
+        <button onClick={onClose} className="p-2 hover:bg-white/50 rounded-xl transition-colors text-slate-300 hover:text-slate-950">
+           <X size={20} />
+        </button>
+      </div>
     </div>
   )
 }
